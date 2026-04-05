@@ -3,6 +3,8 @@ from flask import Flask, jsonify
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.os_manager import ChromeType
 
 app = Flask(__name__)
 
@@ -11,15 +13,18 @@ def setup_browser():
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
     
-    # تحديد مسار الكروم والدرايفر اللي نزلوا عن طريق railway.json
-    chrome_options.binary_location = "/usr/bin/google-chrome"
-    
-    # هنا بنقوله استخدم الدرايفر اللي موجود في السيرفر مباشرة
-    service = Service("/usr/bin/chromedriver")
-    
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    # محاولة تشغيل الكروم بأي طريقة متاحة في السيرفر
+    try:
+        # دي بتخلي السيرفر يحمل الدرايفر المناسب أوتوماتيكياً
+        driver_path = ChromeDriverManager(chrome_type=ChromeType.GOOGLE).install()
+        service = Service(driver_path)
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+    except Exception:
+        # لو فشلت الطريقة الأولى، بيجرب المسار الافتراضي للينكس
+        service = Service("/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
     return driver
 
 @app.route('/')
@@ -32,22 +37,16 @@ def attack():
     try:
         driver = setup_browser()
         driver.get("https://takipcibase.com/")
-        title = driver.title
         return jsonify({
-            "الحالة": "نجاح",
-            "الموقع": "TakipciBase",
-            "عنوان_الصفحة": title,
-            "الرسالة": "الروبوت اخترق الموقع بنجاح!"
+            "status": "Success",
+            "message": "Robot connected successfully!",
+            "page_title": driver.title
         })
     except Exception as e:
-        return jsonify({
-            "الحالة": "خطأ",
-            "الرسالة": str(e)
-        })
+        return jsonify({"status": "Error", "msg": str(e)})
     finally:
         if driver:
             driver.quit()
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
